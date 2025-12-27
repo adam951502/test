@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PSA Scanner (Demo)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 16px; }
+    #reader { width: 100%; max-width: 420px; }
+    .card { margin-top: 12px; padding: 12px; border: 1px solid #ddd; border-radius: 12px; }
+    button { padding: 10px 12px; border-radius: 10px; border: 1px solid #ccc; background: #fff; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    input { padding: 10px 12px; border-radius: 10px; border: 1px solid #ccc; width: 220px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+  </style>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body>
+  <h2>PSA 掃描 Demo</h2>
+  <p>掃 PSA slab 的 QR code 或條碼，顯示 cert number，並可一鍵開 PSA 官方頁。</p>
+
+  <div class="row">
+    <button id="start">開始掃描</button>
+    <button id="stop" disabled>停止</button>
+  </div>
+
+  <div id="reader" style="margin-top:12px;"></div>
+
+  <div class="card">
+    <div>Cert Number：</div>
+    <div id="cert" class="mono" style="font-size:18px;margin:6px 0;">—</div>
+
+    <div class="row">
+      <button id="open" disabled>開啟 PSA Cert 頁</button>
+      <button id="copy" disabled>複製 Cert</button>
+    </div>
+
+    <hr style="margin:12px 0;border:none;border-top:1px solid #eee;" />
+
+    <div class="row">
+      <input id="manual" placeholder="或手動輸入 cert number" />
+      <button id="setManual">套用</button>
+    </div>
+  </div>
+
+  <script>
+    const certEl = document.getElementById("cert");
+    const openBtn = document.getElementById("open");
+    const copyBtn = document.getElementById("copy");
+    const startBtn = document.getElementById("start");
+    const stopBtn = document.getElementById("stop");
+    const manual = document.getElementById("manual");
+    const setManualBtn = document.getElementById("setManual");
+
+    let currentCert = null;
+    let qr = null;
+
+    function extractCertNo(text) {
+      // 1) PSA URL: https://www.psacard.com/cert/76130380
+      const m = text.match(/psacard\.com\/cert\/(\d+)/i);
+      if (m) return m[1];
+
+      // 2) 純數字（有些條碼掃出來可能是一串數字）
+      const n = text.match(/\b\d{6,12}\b/);
+      return n ? n[0] : null;
+    }
+
+    function setCert(certNo) {
+      currentCert = certNo;
+      certEl.textContent = certNo || "—";
+      const enabled = !!certNo;
+      openBtn.disabled = !enabled;
+      copyBtn.disabled = !enabled;
+    }
+
+    openBtn.onclick = () => {
+      if (!currentCert) return;
+      const url = `https://www.psacard.com/cert/${currentCert}`;
+      window.open(url, "_blank");
+    };
+
+    copyBtn.onclick = async () => {
+      if (!currentCert) return;
+      await navigator.clipboard.writeText(currentCert);
+      alert("已複製：" + currentCert);
+    };
+
+    setManualBtn.onclick = () => {
+      const v = (manual.value || "").trim();
+      if (!/^\d{6,12}$/.test(v)) {
+        alert("請輸入純數字 cert number");
+        return;
+      }
+      setCert(v);
+    };
+
+    startBtn.onclick = async () => {
+      if (qr) return;
+      qr = new Html5Qrcode("reader");
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+
+      // 先用 QR + 常見條碼格式；若你的手機/瀏覽器對 1D 條碼不穩，至少 QR 會很好用
+      const config = { fps: 10, qrbox: { width: 260, height: 260 } };
+
+      try {
+        await qr.start(
+          { facingMode: "environment" },
+          config,
+          (decodedText) => {
+            const certNo = extractCertNo(decodedText);
+            if (certNo) setCert(certNo);
+          },
+          () => {}
+        );
+      } catch (e) {
+        alert("相機啟動失敗：\n" + e);
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        qr = null;
+      }
+    };
+
+    stopBtn.onclick = async () => {
+      if (!qr) return;
+      await qr.stop();
+      await qr.clear();
+      qr = null;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    };
+  </script>
+</body>
+</html>
